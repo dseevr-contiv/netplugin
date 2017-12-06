@@ -27,7 +27,7 @@ cluster_ip_nodes = ''
 v2plugin_name = ENV['CONTIV_V2PLUGIN_NAME'] || 'contiv/v2netplugin:0.1'
 cluster_store = ENV['CONTIV_CLUSTER_STORE'] || 'etcd://localhost:2379'
 nightly_release = ENV['NIGHTLY_RELEASE'] || ''
-node_os = ENV['CONTIV_NODE_OS'] || 'centos'
+node_os = ENV['CONTIV_NODE_OS'] != '' ? ENV['CONTIV_NODE_OS'] : 'centos'
 base_ip = ENV['CONTIV_IP_PREFIX'] || '192.168.2.'
 num_nodes = ENV['CONTIV_NODES'].to_i == 0 ? 3 : ENV['CONTIV_NODES'].to_i
 num_vm_cpus = (ENV['CONTIV_CPUS'] || 4).to_i
@@ -96,14 +96,20 @@ rm -rf /var/lib/docker
 if [[ "#{node_os}" == "ubuntu" ]] && [[ "$reinstall" -eq 1 ]]; then
     sudo apt-get purge docker-engine -y || :
     curl https://get.docker.com | sed s/docker-engine/docker-engine=#{docker_version}-0~xenial/g | bash
-elif [[ -n "#{docker_ee_url}" ]]; then
-    echo "Installing Docker EE on $node_os"
+elif [[ "#{node_os}" == "centos" ]] && [[ -n "#{docker_ee_url}" ]]; then
+    echo "Preparing for Docker EE installation"
     sudo yum remove -y docker docker-common docker-selinux docker-engine-selinux docker-engine docker-ce || :
     sudo rm /etc/yum.repos.d/*docker*
     export DOCKERURL='#{docker_ee_url}'
     sudo -E sh -c 'echo "$DOCKERURL/centos" > /etc/yum/vars/dockerurl'
     sudo -E yum-config-manager --add-repo "$DOCKERURL/centos/docker-ee.repo"
-    sudo yum -y install docker-ee
+    if [[ -n "#{docker_version}" ]]; then
+        echo "Installing Docker EE #{docker_version}"
+        sudo yum -y install docker-ee=#{docker_version}
+    else
+        echo "Installing latest version of Docker EE"
+        sudo yum -y install docker-ee
+    fi
     sudo yum install -y yum-utils device-mapper-persistent-data lvm2
 elif [[ "$reinstall" -eq 1 ]] && [[ "#{legacy_docker}" -eq 1 ]]; then
     # cleanup openstack-kilo repo if required
@@ -117,6 +123,7 @@ elif [[ "$reinstall" -eq 1 ]] && [[ "#{legacy_docker}" -eq 1 ]]; then
         curl https://get.docker.com | sed s/docker-engine/docker-engine-#{docker_version}/ | bash
     fi
 elif [[ "$reinstall" -eq 1 ]]; then
+    echo "Installing Docker CE #{docker_version}"
     yum remove docker-engine -y || :
     yum remove docker-ce || :
     yum-config-manager --disable openstack-kilo
