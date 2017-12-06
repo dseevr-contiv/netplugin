@@ -18,6 +18,7 @@ BEGIN {
 go_version = ENV['GO_VERSION'] || '1.7.6'
 docker_version = ENV['CONTIV_DOCKER_VERSION'] || '1.12.6'
 docker_swarm = ENV['CONTIV_DOCKER_SWARM'] || 'classic_mode'
+docker_ee_url = ENV['DOCKERURL'] || ''
 gopath_folder = '/opt/gopath'
 http_proxy = ENV['HTTP_PROXY'] || ENV['http_proxy'] || ''
 https_proxy = ENV['HTTPS_PROXY'] || ENV['https_proxy'] || ''
@@ -52,6 +53,8 @@ export CONTIV_DOCKER_SWARM=#{docker_swarm}
 export BUILD_VERSION=#{build_version}
 EOF
 source /etc/profile.d/envvar.sh
+
+echo "URL=#{docker_ee_url}"
 
 installed_go=$(go version | awk '{ print $3}')
 if [ "$installed_go" == "go#{go_version}" ]; then
@@ -93,6 +96,15 @@ rm -rf /var/lib/docker
 if [[ "#{node_os}" == "ubuntu" ]] && [[ "$reinstall" -eq 1 ]]; then
     sudo apt-get purge docker-engine -y || :
     curl https://get.docker.com | sed s/docker-engine/docker-engine=#{docker_version}-0~xenial/g | bash
+elif [[ -n "#{docker_ee_url}" ]]; then
+    echo "Installing Docker EE on $node_os"
+    sudo yum remove -y docker docker-common docker-selinux docker-engine-selinux docker-engine docker-ce || :
+    sudo rm /etc/yum.repos.d/*docker*
+    export DOCKERURL='#{docker_ee_url}'
+    sudo -E sh -c 'echo "$DOCKERURL/centos" > /etc/yum/vars/dockerurl'
+    sudo -E yum-config-manager --add-repo "$DOCKERURL/centos/docker-ee.repo"
+    sudo yum -y install docker-ee
+    sudo yum install -y yum-utils device-mapper-persistent-data lvm2
 elif [[ "$reinstall" -eq 1 ]] && [[ "#{legacy_docker}" -eq 1 ]]; then
     # cleanup openstack-kilo repo if required
     yum remove docker-engine -y || :
